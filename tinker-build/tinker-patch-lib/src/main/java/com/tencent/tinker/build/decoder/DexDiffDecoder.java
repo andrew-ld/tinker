@@ -260,6 +260,14 @@ public class DexDiffDecoder extends BaseDecoder {
         return false;
     }
 
+    private boolean isDesugarClass(String clazzName) {
+        return clazzName.startsWith("Lj$/");
+    }
+
+    private boolean isDesugarClass(CharSequence clazzName) {
+        return isDesugarClass((String) clazzName);
+    }
+
     private void checkIfLoaderClassesReferToNonLoaderClasses()
             throws IOException, TinkerPatchException {
         boolean hasInvalidCases = false;
@@ -274,7 +282,7 @@ public class DexDiffDecoder extends BaseDecoder {
                 }
                 for (Field field : classDef.getFields()) {
                     final String currFieldTypeDesc = field.getType();
-                    if (!isReferenceFromLoaderClassValid(currFieldTypeDesc)) {
+                    if (!isReferenceFromLoaderClassValid(currFieldTypeDesc) && !isDesugarClass(currFieldTypeDesc)) {
                         Logger.e("FATAL: field '%s' in loader class '%s' refers to class '%s' which "
                                         + "is not loader class, this may cause crash when patch is loaded.",
                                 field.getName(), currClassDesc, currFieldTypeDesc);
@@ -284,7 +292,7 @@ public class DexDiffDecoder extends BaseDecoder {
                 for (Method method : classDef.getMethods()) {
                     boolean isCurrentMethodInvalid = false;
                     final String currMethodRetTypeDesc = method.getReturnType();
-                    if (!isReferenceFromLoaderClassValid(currMethodRetTypeDesc)) {
+                    if (!isReferenceFromLoaderClassValid(currMethodRetTypeDesc) && !isDesugarClass(currMethodRetTypeDesc)) {
                         Logger.e("FATAL: method '%s:%s' in loader class '%s' refers to class '%s' which "
                                         + "is not loader class, this may cause crash when patch is loaded.",
                                 method.getName(), MethodUtil.getShorty(method.getParameterTypes(), currMethodRetTypeDesc),
@@ -292,7 +300,7 @@ public class DexDiffDecoder extends BaseDecoder {
                         isCurrentMethodInvalid = true;
                     } else {
                         for (CharSequence paramTypeDesc : method.getParameterTypes()) {
-                            if (!isReferenceFromLoaderClassValid(paramTypeDesc.toString())) {
+                            if (!isReferenceFromLoaderClassValid(paramTypeDesc.toString()) && !isDesugarClass(paramTypeDesc)) {
                                 Logger.e("FATAL: method '%s:%s' in loader class '%s' refers to class '%s' which "
                                                 + "is not loader class, this may cause crash when patch is loaded.",
                                         method.getName(), MethodUtil.getShorty(method.getParameterTypes(), currMethodRetTypeDesc),
@@ -319,7 +327,7 @@ public class DexDiffDecoder extends BaseDecoder {
                                     case ReferenceType.TYPE: {
                                         final TypeReference typeRefInsn = (TypeReference) refInsn.getReference();
                                         final String refereeTypeDesc = typeRefInsn.getType();
-                                        if (isReferenceFromLoaderClassValid(refereeTypeDesc)) {
+                                        if (isReferenceFromLoaderClassValid(refereeTypeDesc) || isDesugarClass(refereeTypeDesc)) {
                                             break;
                                         }
                                         Logger.e("FATAL: method '%s:%s' in loader class '%s' refers to class '%s' which "
@@ -333,7 +341,7 @@ public class DexDiffDecoder extends BaseDecoder {
                                         final FieldReference fieldRefInsn = (FieldReference) refInsn.getReference();
                                         final String refereeFieldName = fieldRefInsn.getName();
                                         final String refereeFieldDefTypeDesc = fieldRefInsn.getDefiningClass();
-                                        if (isReferenceFromLoaderClassValid(refereeFieldDefTypeDesc)) {
+                                        if (isReferenceFromLoaderClassValid(refereeFieldDefTypeDesc) || isDesugarClass(refereeFieldDefTypeDesc)) {
                                             break;
                                         }
                                         Logger.e("FATAL: method '%s:%s' in loader class '%s' refers to field '%s' in class '%s' which "
@@ -349,7 +357,7 @@ public class DexDiffDecoder extends BaseDecoder {
                                         final Collection<? extends CharSequence> refereeMethodParamTypes = methodRefInsn.getParameterTypes();
                                         final String refereeMethodRetType = methodRefInsn.getReturnType();
                                         final String refereeMethodDefClassDesc = methodRefInsn.getDefiningClass();
-                                        if (isReferenceFromLoaderClassValid(refereeMethodDefClassDesc)) {
+                                        if (isReferenceFromLoaderClassValid(refereeMethodDefClassDesc) || isDesugarClass(refereeMethodDefClassDesc)) {
                                             break;
                                         }
                                         Logger.e("FATAL: method '%s:%s' in loader class '%s' refers to method '%s:%s' in class '%s' which "
