@@ -261,11 +261,11 @@ public class DexDiffDecoder extends BaseDecoder {
     }
 
     private boolean isDesugarClass(String clazzName) {
-        return clazzName.startsWith("Lj$/");
+        return clazzName.startsWith("Lj$/") || clazzName.startsWith("Lcom/android/tools/r8/")
     }
 
     private boolean isDesugarClass(CharSequence clazzName) {
-        return isDesugarClass((String) clazzName);
+        return isDesugarClass(clazzName.toString());
     }
 
     private void checkIfLoaderClassesReferToNonLoaderClasses()
