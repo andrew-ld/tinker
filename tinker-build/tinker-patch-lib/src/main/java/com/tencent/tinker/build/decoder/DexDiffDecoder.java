@@ -261,7 +261,19 @@ public class DexDiffDecoder extends BaseDecoder {
     }
 
     private boolean isDesugarClass(String clazzName) {
-        return clazzName.startsWith("Lj$/") || clazzName.startsWith("Lcom/android/tools/r8/");
+        if (clazzName.startsWith("Lj$/")) {
+            return true;
+        }
+        
+        if (clazzName.startsWith("Lcom/android/tools/r8/")) {
+            return true;
+        }
+        
+        if (clazzName.startsWith("Lcom/didiglobal/booster/")) {
+            return true;
+        }
+        
+        return false;
     }
 
     private boolean isDesugarClass(CharSequence clazzName) {
