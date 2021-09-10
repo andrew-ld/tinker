@@ -27,6 +27,8 @@ import groovy.io.FileType
 import org.gradle.api.DefaultTask
 import org.gradle.api.GradleException
 import org.gradle.api.Project
+import org.gradle.api.tasks.Input
+import org.gradle.api.tasks.Internal
 import org.gradle.api.tasks.TaskAction
 import org.gradle.util.GFileUtils
 import sun.misc.Unsafe
@@ -43,11 +45,17 @@ import static com.tencent.tinker.build.gradle.Compatibilities.*
  * @author zhangshaowen
  */
 public class TinkerResourceIdTask extends DefaultTask {
+    @Internal
     def variant
+
+    @Internal
     String resDir
+
+    @Input
     String applicationId
 
     //if you need add public flag, set tinker.aapt2.public = true in gradle.properties
+    @Input
     boolean addPublicFlagForAapt2 = false
 
     TinkerResourceIdTask() {
@@ -62,19 +70,24 @@ public class TinkerResourceIdTask extends DefaultTask {
         def stableIdsFile = project.file(TinkerBuildPath.getResourcePublicTxt(project))
         if (!stableIdsFile.exists()) {
             stableIdsFile.getParentFile().mkdirs()
-        } else {
-            FileOperation.deleteFile(stableIdsFile)
+            // Create an empty file here to make aapt2 happy before stableIdsFile is generated.
+            stableIdsFile.createNewFile()
         }
-        // Create an empty file here to make aapt2 happy before stableIdsFile is generated.
-        stableIdsFile.createNewFile()
 
+        def modifiedAdditionalParams = []
         def additionalParams = project.android.aaptOptions.additionalParameters
-        if (additionalParams == null) {
-            additionalParams = new ArrayList<>()
-            project.android.aaptOptions.additionalParameters = additionalParams
+        if (additionalParams != null) {
+            modifiedAdditionalParams.addAll(additionalParams)
         }
-        additionalParams.add('--stable-ids')
-        additionalParams.add(stableIdsFile.getAbsolutePath())
+        if (modifiedAdditionalParams.contains('--stable-ids')) {
+            project.logger.error('** [NOTICE] ** Manually specified stable-ids file was detected, '
+                    + 'Tinker will give up injecting generated stable-ids file. Please ensure your stable-ids file '
+                    + 'keep ids of all resources in base apk.')
+            return
+        }
+        modifiedAdditionalParams.add('--stable-ids')
+        modifiedAdditionalParams.add(stableIdsFile.getAbsolutePath())
+        project.android.aaptOptions.additionalParameters(modifiedAdditionalParams.toArray(new String[0]))
         project.logger.error("AApt2 is enabled, inject ${stableIdsFile.getAbsolutePath()} into aapt options.")
     }
 
@@ -108,15 +121,16 @@ public class TinkerResourceIdTask extends DefaultTask {
         // It's wired that only AGP 3.5.x needs this ensurance logic. In newer version of AGP, aaptOptions field
         // is gone, which let us skip the rest logic.
         if (aaptOptions != null) {
+            def modifiedAdditionalParams = []
             def additionalParameters = aaptOptions.additionalParameters
-            if (additionalParameters == null) {
-                additionalParameters = new ArrayList<String>()
-                replaceFinalField(aaptOptions.getClass(), 'additionalParameters', aaptOptions, additionalParameters)
+            if (additionalParameters != null) {
+                modifiedAdditionalParams.addAll(additionalParameters)
             }
-            if (!additionalParameters.contains('--stable-ids')) {
-                additionalParameters.add('--stable-ids')
+            if (!modifiedAdditionalParams.contains('--stable-ids')) {
+                modifiedAdditionalParams.add('--stable-ids')
                 def stableIdsFile = project.file(TinkerBuildPath.getResourcePublicTxt(project))
-                additionalParameters.add(stableIdsFile.getAbsolutePath())
+                modifiedAdditionalParams.add(stableIdsFile.getAbsolutePath())
+                replaceFinalField(aaptOptions.getClass(), 'additionalParameters', aaptOptions, modifiedAdditionalParams)
                 project.logger.error("AApt2 is enabled, and tinker ensures that ${stableIdsFile.getAbsolutePath()} is injected into aapt options.")
             }
         }
@@ -216,7 +230,7 @@ public class TinkerResourceIdTask extends DefaultTask {
     /**
      * get real name for all resources in R.txt by values files
      */
-    Map<String, String> getRealNameMap() {
+    private Map<String, String> getRealNameMap() {
         Map<String, String> realNameMap = new HashMap<>()
         def mergeResourcesTask = Compatibilities.getMergeResourcesTask(project, variant)
         List<File> resDirCandidateList = new ArrayList<>()
@@ -259,7 +273,7 @@ public class TinkerResourceIdTask extends DefaultTask {
     /**
      * get the sorted stable id lines
      */
-    ArrayList<String> getSortedStableIds(Map<RDotTxtEntry.RType, Set<RDotTxtEntry>> rTypeResourceMap) {
+    private ArrayList<String> getSortedStableIds(Map<RDotTxtEntry.RType, Set<RDotTxtEntry>> rTypeResourceMap) {
         List<String> sortedLines = new ArrayList<>()
         Map<String, String> realNameMap = getRealNameMap()
         rTypeResourceMap?.each { key, entries ->
