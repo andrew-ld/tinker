@@ -7,7 +7,7 @@ buildscript {
         jcenter()
     }
     dependencies {
-        classpath 'com.android.tools.build:gradle:3.2.1'
+        classpath 'com.android.tools.build:gradle:4.2.0'
         classpath 'com.jfrog.bintray.gradle:gradle-bintray-plugin:1.6'
         classpath "com.github.jengelman.gradle.plugins:shadow:4.0.4"
     }
@@ -33,10 +33,10 @@ ext {
     targetSdkVersion = 23
     buildToolsVersion = '28.0.3'
     androidXAnnotationVersion = '1.1.0'
-    javaVersion = JavaVersion.VERSION_1_7
+    javaVersion = JavaVersion.VERSION_1_8
 
     GROUP = 'com.tencent.tinker'
-    VERSION_NAME = '1.9.14.18'
+    VERSION_NAME = '1.9.14.25'
 
     POM_DESCRIPTION = 'Tinker is a hot-fix solution library for Android, it supports dex, library and resources update without reinstalling apk.'
     POM_URL = 'https://github.com/Tencent/tinker'

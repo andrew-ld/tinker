@@ -26,9 +26,9 @@ import java.util.regex.Pattern;
 public class ShareConstants {
     public static final String TINKER_VERSION = BuildConfig.TINKER_VERSION;
 
-    public static final int BUFFER_SIZE         = 16384;
+    public static final int BUFFER_SIZE         = 4096 * 1;
     public static final int MD5_LENGTH          = 32;
-    public static final int MD5_FILE_BUF_LENGTH = 1024 * 100;
+    public static final int MD5_FILE_BUF_LENGTH = 4096 * 1;
 
     public static final int MAX_EXTRACT_ATTEMPTS = 2;
 
@@ -62,6 +62,7 @@ public class ShareConstants {
     public static final String JAR_SUFFIX  = ".jar";
     public static final String APK_SUFFIX  = ".apk";
     public static final String ODEX_SUFFIX = ".odex";
+    public static final String VDEX_SUFFIX = ".vdex";
 
     public static final String TEST_DEX_NAME            = "test.dex";
     public static final String CLASS_N_APK_NAME         = "tinker_classN.apk";
