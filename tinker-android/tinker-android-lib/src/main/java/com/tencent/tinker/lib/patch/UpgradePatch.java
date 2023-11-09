@@ -42,7 +42,7 @@ public class UpgradePatch extends AbstractPatch {
     private static final String TAG = "Tinker.UpgradePatch";
 
     @Override
-    public boolean tryPatch(Context context, String tempPatchPath, PatchResult patchResult) {
+    public boolean tryPatch(Context context, String tempPatchPath, boolean useEmergencyMode, PatchResult patchResult) {
         Tinker manager = Tinker.with(context);
 
         final File patchFile = new File(tempPatchPath);
@@ -90,6 +90,8 @@ public class UpgradePatch extends AbstractPatch {
 
         final String isProtectedAppStr = pkgProps.get(ShareConstants.PKGMETA_KEY_IS_PROTECTED_APP);
         final boolean isProtectedApp = (isProtectedAppStr != null && !isProtectedAppStr.isEmpty() && !"0".equals(isProtectedAppStr));
+        final String useCustomPatchStr = pkgProps.get(ShareConstants.PKGMETA_KEY_USE_CUSTOM_FILE_PATCH);
+        final boolean useCustomPatch = (useCustomPatchStr != null && !useCustomPatchStr.isEmpty() && !"0".equals(useCustomPatchStr));
 
         SharePatchInfo oldInfo = SharePatchInfo.readAndCheckPropertyWithLock(patchInfoFile, patchInfoLockFile);
 
@@ -124,9 +126,15 @@ public class UpgradePatch extends AbstractPatch {
             // if it is interpret now, use changing flag to wait main process
             final String finalOatDir = usingInterpret ? ShareConstants.CHANING_DEX_OPTIMIZE_PATH : oldInfo.oatDir;
             if (!patchMd5.equals(oldInfo.newVersion) && !oldInfo.newVersion.equals(oldInfo.oldVersion)) {
+                // Mark previous new version to old one before delete current new version so that all processes can stay at the
+                // same version after restart but before the latest new version finish applying.
+                final String lastNewVersion = oldInfo.newVersion;
+                oldInfo.newVersion = oldInfo.oldVersion;
+                SharePatchInfo.rewritePatchInfoFileWithLock(patchInfoFile, oldInfo, patchInfoLockFile);
+
                 // Currently applied patch is not the same as last applied one and the last applied one is not loaded,
                 // so we can delete the last applied patch to avoid patch artifacts accumulating.
-                final String patchName = SharePatchFileUtil.getPatchVersionDirectory(oldInfo.newVersion);
+                final String patchName = SharePatchFileUtil.getPatchVersionDirectory(lastNewVersion);
                 SharePatchFileUtil.deleteDir(new File(patchDirectory, patchName));
             }
             final String versionToRemove;
@@ -136,9 +144,9 @@ public class UpgradePatch extends AbstractPatch {
             } else {
                 versionToRemove = oldInfo.versionToRemove;
             }
-            newInfo = new SharePatchInfo(oldInfo.oldVersion, patchMd5, isProtectedApp, versionToRemove, Build.FINGERPRINT, finalOatDir, false);
+            newInfo = new SharePatchInfo(oldInfo.oldVersion, patchMd5, isProtectedApp, useCustomPatch, versionToRemove, Build.FINGERPRINT, finalOatDir, false);
         } else {
-            newInfo = new SharePatchInfo("", patchMd5, isProtectedApp, "", Build.FINGERPRINT, ShareConstants.DEFAULT_DEX_OPTIMIZE_PATH, false);
+            newInfo = new SharePatchInfo("", patchMd5, isProtectedApp, useCustomPatch, "", Build.FINGERPRINT, ShareConstants.DEFAULT_DEX_OPTIMIZE_PATH, false);
         }
 
         // it is a new patch, we first delete if there is any files
@@ -167,7 +175,7 @@ public class UpgradePatch extends AbstractPatch {
         }
 
         //we use destPatchFile instead of patchFile, because patchFile may be deleted during the patch process
-        if (!DexDiffPatchInternal.tryRecoverDexFiles(manager, signatureCheck, context, patchVersionDirectory, destPatchFile, patchResult)) {
+        if (!DexDiffPatchInternal.tryRecoverDexFiles(manager, signatureCheck, context, patchVersionDirectory, destPatchFile, useEmergencyMode, patchResult)) {
             ShareTinkerLog.e(TAG, "UpgradePatch tryPatch:new patch recover, try patch dex failed");
             return false;
         }
@@ -177,12 +185,14 @@ public class UpgradePatch extends AbstractPatch {
             return false;
         }
 
-        if (!BsDiffPatchInternal.tryRecoverLibraryFiles(manager, signatureCheck, context, patchVersionDirectory, destPatchFile)) {
+        if (!SoDiffPatchInternal.tryRecoverLibraryFiles(manager, signatureCheck, context,
+                patchVersionDirectory, destPatchFile, useCustomPatch, patchResult)) {
             ShareTinkerLog.e(TAG, "UpgradePatch tryPatch:new patch recover, try patch library failed");
             return false;
         }
 
-        if (!ResDiffPatchInternal.tryRecoverResourceFiles(manager, signatureCheck, context, patchVersionDirectory, destPatchFile)) {
+        if (!ResDiffPatchInternal.tryRecoverResourceFiles(manager, signatureCheck, context,
+                patchVersionDirectory, destPatchFile, useCustomPatch, patchResult)) {
             ShareTinkerLog.e(TAG, "UpgradePatch tryPatch:new patch recover, try patch resource failed");
             return false;
         }

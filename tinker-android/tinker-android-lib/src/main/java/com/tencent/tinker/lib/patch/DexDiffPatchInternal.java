@@ -71,7 +71,8 @@ public class DexDiffPatchInternal extends BasePatchInternal {
 
 
     protected static boolean tryRecoverDexFiles(Tinker manager, ShareSecurityCheck checker, Context context,
-                                                String patchVersionDirectory, File patchFile, PatchResult patchResult) {
+                                                String patchVersionDirectory, File patchFile, boolean useEmergencyMode,
+                                                PatchResult patchResult) {
         if (!manager.isEnabledForDex()) {
             ShareTinkerLog.w(TAG, "patch recover, dex is not enabled");
             return true;
@@ -84,8 +85,10 @@ public class DexDiffPatchInternal extends BasePatchInternal {
         }
 
         long begin = SystemClock.elapsedRealtime();
-        boolean result = patchDexExtractViaDexDiff(context, patchVersionDirectory, dexMeta, patchFile, patchResult);
+        boolean result = patchDexExtractViaDexDiff(context, patchVersionDirectory, dexMeta, patchFile,
+                useEmergencyMode, patchResult);
         long cost = SystemClock.elapsedRealtime() - begin;
+        patchResult.dexCostTime = cost;
         ShareTinkerLog.i(TAG, "recover dex result:%b, cost:%d", result, cost);
         return result;
     }
@@ -165,7 +168,9 @@ public class DexDiffPatchInternal extends BasePatchInternal {
         return true;
     }
 
-    private static boolean patchDexExtractViaDexDiff(Context context, String patchVersionDirectory, String meta, final File patchFile, PatchResult patchResult) {
+    private static boolean patchDexExtractViaDexDiff(Context context, String patchVersionDirectory, String meta,
+                                                     final File patchFile, boolean useEmergencyMode,
+                                                     PatchResult patchResult) {
         String dir = patchVersionDirectory + "/" + DEX_PATH + "/";
 
         if (!extractDexDiffInternals(context, dir, meta, patchFile, TYPE_DEX)) {
@@ -193,7 +198,7 @@ public class DexDiffPatchInternal extends BasePatchInternal {
         ShareTinkerLog.i(TAG, "legal files to do dexopt: " + legalFiles);
 
         final String optimizeDexDirectory = patchVersionDirectory + "/" + DEX_OPTIMIZE_PATH + "/";
-        return dexOptimizeDexFiles(context, legalFiles, optimizeDexDirectory, patchFile, patchResult);
+        return dexOptimizeDexFiles(context, legalFiles, optimizeDexDirectory, patchFile, useEmergencyMode, patchResult);
 
     }
 
@@ -275,6 +280,7 @@ public class DexDiffPatchInternal extends BasePatchInternal {
         AlignedZipOutputStream out = null;
         try {
             out = new AlignedZipOutputStream(new BufferedOutputStream(new FileOutputStream(classNFile)));
+            classNFile.setReadOnly();
             for (ShareDexDiffPatchInfo info : classNDexInfo.keySet()) {
                 File dexFile = classNDexInfo.get(info);
                 if (info.isJarMode) {
@@ -346,7 +352,9 @@ public class DexDiffPatchInternal extends BasePatchInternal {
         return result;
     }
 
-    private static boolean dexOptimizeDexFiles(Context context, List<File> dexFiles, String optimizeDexDirectory, final File patchFile, final PatchResult patchResult) {
+    private static boolean dexOptimizeDexFiles(Context context, List<File> dexFiles, String optimizeDexDirectory,
+                                               final File patchFile, boolean useEmergencyMode,
+                                               final PatchResult patchResult) {
         final Tinker manager = Tinker.with(context);
 
         optFiles.clear();
@@ -380,7 +388,7 @@ public class DexDiffPatchInternal extends BasePatchInternal {
             // try parallel dex optimizer
             TinkerDexOptimizer.optimizeAll(
                   context, dexFiles, optimizeDexDirectoryFile,
-                  useDLC,
+                  useDLC, useEmergencyMode,
                   new TinkerDexOptimizer.ResultCallback() {
                       long startTime;
 
@@ -641,6 +649,10 @@ public class DexDiffPatchInternal extends BasePatchInternal {
             try {
                 zos = new ZipOutputStream(new
                     BufferedOutputStream(new FileOutputStream(extractTo)));
+                if (ShareTinkerInternals.isNewerOrEqualThanVersion(33, true)) {
+                    extractTo.setReadOnly();
+                }
+
                 bis = new BufferedInputStream(zipFile.getInputStream(entryFile));
 
                 byte[] buffer = new byte[ShareConstants.BUFFER_SIZE];
@@ -712,6 +724,9 @@ public class DexDiffPatchInternal extends BasePatchInternal {
         try {
             oldDexStream = new BufferedInputStream(baseApk.getInputStream(oldDexEntry));
             patchFileStream = (patchFileEntry != null ? new BufferedInputStream(patchPkg.getInputStream(patchFileEntry)) : null);
+            if (ShareTinkerInternals.isNewerOrEqualThanVersion(33, true)) {
+                patchedDexFile.setReadOnly();
+            }
 
             final boolean isRawDexFile = SharePatchFileUtil.isRawDexFile(patchInfo.rawName);
             if (!isRawDexFile || patchInfo.isJarMode) {

@@ -92,7 +92,6 @@ public class TinkerLoader extends AbstractTinkerLoader {
 
         //tinker/patch.info
         File patchInfoFile = SharePatchFileUtil.getPatchInfoFile(patchDirectoryPath);
-
         //check patch info file whether exist
         if (!patchInfoFile.exists()) {
             ShareTinkerLog.w(TAG, "tryLoadPatchFiles:patch info not exist:" + patchInfoFile.getAbsolutePath());
@@ -102,7 +101,6 @@ public class TinkerLoader extends AbstractTinkerLoader {
         //old = 641e634c5b8f1649c75caf73794acbdf
         //new = 2c150d8560334966952678930ba67fa8
         File patchInfoLockFile = SharePatchFileUtil.getPatchInfoLockFile(patchDirectoryPath);
-
         patchInfo = SharePatchInfo.readAndCheckPropertyWithLock(patchInfoFile, patchInfoLockFile);
         if (patchInfo == null) {
             ShareIntentUtil.setIntentReturnCode(resultIntent, ShareConstants.ERROR_LOAD_PATCH_INFO_CORRUPTED);
@@ -111,6 +109,9 @@ public class TinkerLoader extends AbstractTinkerLoader {
 
         final boolean isProtectedApp = patchInfo.isProtectedApp;
         resultIntent.putExtra(ShareIntentUtil.INTENT_IS_PROTECTED_APP, isProtectedApp);
+
+        final boolean useCustomPatch = patchInfo.useCustomPatch;
+        resultIntent.putExtra(ShareIntentUtil.INTENT_USE_CUSTOM_PATCH, useCustomPatch);
 
         String oldVersion = patchInfo.oldVersion;
         String newVersion = patchInfo.newVersion;
@@ -170,7 +171,7 @@ public class TinkerLoader extends AbstractTinkerLoader {
 
                         String patchVersionDirFullPath = patchDirectoryPath + "/" + patchName;
                         ShareTinkerInternals.killProcessExceptMain(app);
-                        SharePatchFileUtil.deleteDir(patchVersionDirFullPath);
+                        SharePatchFileUtil.deleteDirAsync(patchVersionDirFullPath);
                     }
                 } else {
                     patchInfo.versionToRemove = "";
@@ -203,6 +204,7 @@ public class TinkerLoader extends AbstractTinkerLoader {
         if (versionChanged && mainProcess) {
             version = newVersion;
         }
+
         if (ShareTinkerInternals.isNullOrNil(version)) {
             ShareTinkerLog.w(TAG, "tryLoadPatchFiles:version is blank, wait main process to restart");
             ShareIntentUtil.setIntentReturnCode(resultIntent, ShareConstants.ERROR_LOAD_PATCH_INFO_BLANK);
@@ -241,7 +243,6 @@ public class TinkerLoader extends AbstractTinkerLoader {
         }
 
         ShareSecurityCheck securityCheck = new ShareSecurityCheck(app);
-
         int returnCode = ShareTinkerInternals.checkTinkerPackage(app, tinkerFlag, patchVersionFile, securityCheck);
         if (returnCode != ShareConstants.ERROR_PACKAGE_CHECK_OK) {
             ShareTinkerLog.w(TAG, "tryLoadPatchFiles:checkTinkerPackage");
@@ -334,10 +335,19 @@ public class TinkerLoader extends AbstractTinkerLoader {
                 resultIntent.putExtra(ShareIntentUtil.INTENT_PATCH_EXCEPTION, new TinkerRuntimeException("checkSafeModeCount fail"));
                 ShareIntentUtil.setIntentReturnCode(resultIntent, ShareConstants.ERROR_LOAD_PATCH_UNCAUGHT_EXCEPTION);
                 ShareTinkerLog.w(TAG, "tryLoadPatchFiles:checkSafeModeCount fail, patch was deleted.");
-                return;
             } else {
                 ShareTinkerLog.w(TAG, "tryLoadPatchFiles:checkSafeModeCount fail, but we are not in main process, mark the patch to be deleted and continue load patch.");
                 ShareTinkerInternals.cleanPatch(app);
+            }
+            return;
+        }
+
+        //now we can load patch resource
+        if (isEnabledForResource) {
+            boolean loadTinkerResources = TinkerResourceLoader.loadTinkerResources(app, patchVersionDirectory, resultIntent);
+            if (!loadTinkerResources) {
+                ShareTinkerLog.w(TAG, "tryLoadPatchFiles:onPatchLoadResourcesFail");
+                return;
             }
         }
 
@@ -370,15 +380,6 @@ public class TinkerLoader extends AbstractTinkerLoader {
             boolean loadArkHotFixJars = TinkerArkHotLoader.loadTinkerArkHot(app, patchVersionDirectory, resultIntent);
             if (!loadArkHotFixJars) {
                 ShareTinkerLog.w(TAG, "tryLoadPatchFiles:onPatchLoadArkApkFail");
-                return;
-            }
-        }
-
-        //now we can load patch resource
-        if (isEnabledForResource) {
-            boolean loadTinkerResources = TinkerResourceLoader.loadTinkerResources(app, patchVersionDirectory, resultIntent);
-            if (!loadTinkerResources) {
-                ShareTinkerLog.w(TAG, "tryLoadPatchFiles:onPatchLoadResourcesFail");
                 return;
             }
         }

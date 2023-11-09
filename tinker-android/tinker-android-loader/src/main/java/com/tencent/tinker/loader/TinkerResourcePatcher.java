@@ -58,6 +58,8 @@ class TinkerResourcePatcher {
 
     // original object
     private static Collection<WeakReference<Resources>> references = null;
+
+    private static Map<Object, WeakReference<Object>> resourceImpls = null;
     private static Object currentActivityThread = null;
     private static AssetManager newAssetManager = null;
 
@@ -77,6 +79,10 @@ class TinkerResourcePatcher {
     private static Field stringBlocksField = null;
 
     private static long storedPatchedResModifiedTime = 0L;
+
+    private static Context packageContext = null;
+
+    private static Context packageResContext = null;
 
     @SuppressWarnings("unchecked")
     public static void isResourceCanPatch(Context context) throws Throwable {
@@ -98,8 +104,11 @@ class TinkerResourcePatcher {
 
         resDir = findField(loadedApkClass, "mResDir");
         packagesFiled = findField(activityThread, "mPackages");
-        if (Build.VERSION.SDK_INT < 27) {
+        try {
             resourcePackagesFiled = findField(activityThread, "mResourcePackages");
+        } catch (Throwable thr) {
+            ShareTinkerLog.printErrStackTrace(TAG, thr, "Fail to get mResourcePackages field.");
+            resourcePackagesFiled = null;
         }
 
         // Create a new AssetManager instance and point it to the resources
@@ -139,6 +148,13 @@ class TinkerResourcePatcher {
                 // N moved the resources to mResourceReferences
                 final Field mResourceReferences = findField(resourcesManagerClass, "mResourceReferences");
                 references = (Collection<WeakReference<Resources>>) mResourceReferences.get(resourcesManager);
+
+                try {
+                    final Field mResourceImplsField = findField(resourcesManagerClass, "mResourceImpls");
+                    resourceImpls = (Map<Object, WeakReference<Object>>) mResourceImplsField.get(resourcesManager);
+                } catch (Throwable ignored) {
+                    resourceImpls = null;
+                }
             }
         } else {
             final Field fMActiveResources = findField(activityThread, "mActiveResources");
@@ -186,13 +202,15 @@ class TinkerResourcePatcher {
 
         final ApplicationInfo appInfo = context.getApplicationInfo();
 
-        final Field[] packagesFields;
-        if (Build.VERSION.SDK_INT < 27) {
-            packagesFields = new Field[]{packagesFiled, resourcePackagesFiled};
-        } else {
-            packagesFields = new Field[]{packagesFiled};
-        }
+        // Prevent cached LoadedApk being recycled.
+        packageContext = context.createPackageContext(context.getPackageName(), Context.CONTEXT_INCLUDE_CODE);
+        packageResContext = context.createPackageContext(context.getPackageName(), 0);
+
+        final Field[] packagesFields = new Field[]{packagesFiled, resourcePackagesFiled};
         for (Field field : packagesFields) {
+            if (field == null) {
+                continue;
+            }
             final Object value = field.get(currentActivityThread);
 
             for (Map.Entry<String, WeakReference<?>> entry
@@ -262,6 +280,20 @@ class TinkerResourcePatcher {
             clearPreloadTypedArrayIssue(resources);
 
             resources.updateConfiguration(resources.getConfiguration(), resources.getDisplayMetrics());
+        }
+
+        try {
+            if (resourceImpls != null) {
+                for (WeakReference<Object> wr : resourceImpls.values()) {
+                    final Object resourceImpl = wr.get();
+                    if (resourceImpl != null) {
+                        final Field implAssets = findField(resourceImpl, "mAssets");
+                        implAssets.set(resourceImpl, newAssetManager);
+                    }
+                }
+            }
+        } catch (Throwable ignored) {
+            // Ignored.
         }
 
         // Handle issues caused by WebView on Android N.
